@@ -1,0 +1,8 @@
+# Anum Papers Database
+# Python dependencies
+
+streamlit>=1.28.0
+habanero>=0.7.0
+pyalex>=0.7.0
+requests>=2.31.0
+
