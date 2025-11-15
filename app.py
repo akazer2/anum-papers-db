@@ -875,318 +875,321 @@ def show_search_page(db):
             type_badge = entry.type.replace("_", " ").title()
             header_text = f"{entry.title[:80]}{'...' if len(entry.title) > 80 else ''} • {type_badge}"
             
-            with st.expander(header_text, expanded=False):
-                # Title - most prominent
-                st.markdown(f"### {entry.title}")
+            # Layout with dropdown next to expander
+            col_dropdown, col_expander = st.columns([1, 4])
+            
+            with col_dropdown:
+                # Project area dropdown - always visible for quick assignment
+                current_project_area_display = PROJECT_AREA_DISPLAY.get(entry.project_area, "None")
+                last_processed_key = f"last_project_area_{entry.id}"
                 
-                # Authors section
-                if authors:
-                    author_names = [a['name'] for a in authors]
-                    author_str = ", ".join(author_names)
-                    st.markdown(f"**Authors:** {author_str}")
+                # Initialize last processed value if not set
+                if last_processed_key not in st.session_state:
+                    st.session_state[last_processed_key] = current_project_area_display
                 
-                st.markdown("---")
+                # Get current selection from dropdown
+                selected_project_area_display = st.selectbox(
+                    "Project:",
+                    list(PROJECT_AREAS.keys()),
+                    index=list(PROJECT_AREAS.keys()).index(current_project_area_display) if current_project_area_display in PROJECT_AREAS else 0,
+                    key=f"selectbox_project_area_{entry.id}",
+                    label_visibility="visible"
+                )
                 
-                # Details in columns
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.markdown("**Publication Details**")
-                    if entry.venue:
-                        st.write(f"**Venue:** {entry.venue}")
-                    if entry.year:
-                        st.write(f"**Year:** {entry.year}")
-                    if entry.anum_position:
-                        position_suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(entry.anum_position, 'th')
-                        st.write(f"**Anum's Position:** {entry.anum_position}{position_suffix} author")
-                    if entry.volume or entry.issue:
-                        vol_info = []
-                        if entry.volume:
-                            vol_info.append(f"Vol. {entry.volume}")
-                        if entry.issue:
-                            vol_info.append(f"Issue {entry.issue}")
-                        if entry.pages:
-                            vol_info.append(f"pp. {entry.pages}")
-                        if vol_info:
-                            st.write(f"**Publication Info:** {', '.join(vol_info)}")
-                    if entry.doi:
-                        st.write(f"**DOI:** [{entry.doi}](https://doi.org/{entry.doi})")
-                    if entry.abstract_number:
-                        st.write(f"**Abstract #:** {entry.abstract_number}")
-                    if entry.date:
-                        st.write(f"**Date:** {entry.date}")
-                    if entry.location:
-                        st.write(f"**Location:** {entry.location}")
-                    if entry.status:
-                        st.write(f"**Status:** {entry.status}")
-                    if entry.citation_count is not None:
-                        st.write(f"**Citations:** {entry.citation_count}")
-                    if entry.subject_area:
-                        st.write(f"**Subject Area:** {entry.subject_area}")
-                
-                with col2:
-                    st.markdown("**Author List**")
-                    for author in authors:
-                        author_marker = " 👤" if author['is_anum'] else ""
-                        first_marker = " ⭐" if author['is_first_author'] else ""
-                        st.write(f"{author['position']}. {author['name']}{author_marker}{first_marker}")
-                    
-                    # Project area dropdown - easy assignment
-                    st.markdown("---")
-                    st.markdown("**Project Area**")
-                    current_project_area_display = PROJECT_AREA_DISPLAY.get(entry.project_area, "None")
-                    last_processed_key = f"last_project_area_{entry.id}"
-                    
-                    # Initialize last processed value if not set
-                    if last_processed_key not in st.session_state:
-                        st.session_state[last_processed_key] = current_project_area_display
-                    
-                    # Get current selection from dropdown
-                    selected_project_area_display = st.selectbox(
-                        "Assign to project:",
-                        list(PROJECT_AREAS.keys()),
-                        index=list(PROJECT_AREAS.keys()).index(current_project_area_display) if current_project_area_display in PROJECT_AREAS else 0,
-                        key=f"selectbox_project_area_{entry.id}",
-                        label_visibility="collapsed"
-                    )
-                    
-                    # Update if selection changed from both current DB value and last processed value
-                    if (selected_project_area_display != current_project_area_display and 
-                        selected_project_area_display != st.session_state[last_processed_key]):
-                        selected_project_area = PROJECT_AREAS[selected_project_area_display]
-                        # Update entry in database
-                        entry.project_area = selected_project_area
-                        if db.update_entry(entry):
-                            st.session_state[last_processed_key] = selected_project_area_display
-                            st.success(f"✅ Updated to {selected_project_area_display}")
-                            st.rerun()
-                        else:
-                            st.error("❌ Failed to update project area")
-                    elif selected_project_area_display != st.session_state[last_processed_key]:
-                        # Selection changed but matches DB - update session state
+                # Update if selection changed from both current DB value and last processed value
+                if (selected_project_area_display != current_project_area_display and 
+                    selected_project_area_display != st.session_state[last_processed_key]):
+                    selected_project_area = PROJECT_AREAS[selected_project_area_display]
+                    # Update entry in database
+                    entry.project_area = selected_project_area
+                    if db.update_entry(entry):
                         st.session_state[last_processed_key] = selected_project_area_display
-                
-                # Enriched metadata section
-                has_enriched = entry.abstract or entry.url or entry.keywords
-                if has_enriched:
-                    st.markdown("---")
-                    st.markdown("**Additional Information**")
-                    if entry.url:
-                        st.write(f"**URL:** [{entry.url}]({entry.url})")
-                    if entry.abstract:
-                        with st.expander("📄 Abstract", expanded=False):
-                            st.write(entry.abstract)
-                    if entry.keywords:
-                        st.write(f"**Keywords:** {entry.keywords}")
-                
-                # Edit and Delete buttons
-                st.markdown("---")
-                edit_key = f"edit_mode_{entry.id}"
-                delete_key = f"delete_confirm_{entry.id}"
-                
-                # Initialize session state
-                if edit_key not in st.session_state:
-                    st.session_state[edit_key] = False
-                if delete_key not in st.session_state:
-                    st.session_state[delete_key] = False
-                
-                # Show edit form if in edit mode
-                if st.session_state[edit_key]:
-                    with st.form(f"edit_entry_{entry.id}"):
-                        st.markdown("### ✏️ Edit Entry")
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            type_options = ["publication", "book_chapter", "patent", "oral_presentation", "poster_abstract"]
-                            try:
-                                type_index = type_options.index(entry.type)
-                            except ValueError:
-                                type_index = 0
-                            edited_type = st.selectbox("Entry Type", type_options, index=type_index, key=f"edit_type_{entry.id}")
-                            edited_year = st.number_input("Year", value=entry.year or None, min_value=1900, max_value=2100, step=1, format="%d", key=f"edit_year_{entry.id}")
-                            edited_venue = st.text_input("Venue/Journal", value=entry.venue or '', key=f"edit_venue_{entry.id}")
-                        
-                        with col2:
-                            edited_volume = st.text_input("Volume", value=entry.volume or '', key=f"edit_volume_{entry.id}")
-                            edited_issue = st.text_input("Issue", value=entry.issue or '', key=f"edit_issue_{entry.id}")
-                            edited_pages = st.text_input("Pages", value=entry.pages or '', key=f"edit_pages_{entry.id}")
-                        
-                        edited_title = st.text_area("Title", value=entry.title or '', height=100, key=f"edit_title_{entry.id}")
-                        edited_doi = st.text_input("DOI", value=entry.doi or '', key=f"edit_doi_{entry.id}")
-                        
-                        # Authors editing
-                        st.markdown("### Authors (one per line)")
-                        authors_text = '\n'.join([a['name'] for a in authors])
-                        edited_authors_text = st.text_area(
-                            "Authors", 
-                            value=authors_text, 
-                            height=100,
-                            help="Enter authors, one per line. Format: LastName, FirstName",
-                            key=f"edit_authors_{entry.id}"
-                        )
-                        edited_authors = [a.strip() for a in edited_authors_text.split('\n') if a.strip()]
-                        
-                        # Additional fields
-                        with st.expander("Additional Fields"):
-                            edited_abstract = st.text_area("Abstract", value=entry.abstract or '', key=f"edit_abstract_{entry.id}")
-                            edited_url = st.text_input("URL", value=entry.url or '', key=f"edit_url_{entry.id}")
-                            edited_keywords = st.text_input("Keywords", value=entry.keywords or '', key=f"edit_keywords_{entry.id}")
-                            edited_subject_area = st.text_input("Subject Area", value=entry.subject_area or '', key=f"edit_subject_{entry.id}")
-                            edited_citation_count = st.number_input("Citation Count", value=entry.citation_count or 0, min_value=0, step=1, key=f"edit_citations_{entry.id}")
-                            edited_date = st.text_input("Date (for presentations)", value=entry.date or '', key=f"edit_date_{entry.id}")
-                            edited_location = st.text_input("Location (for presentations)", value=entry.location or '', key=f"edit_location_{entry.id}")
-                            edited_abstract_number = st.text_input("Abstract Number", value=entry.abstract_number or '', key=f"edit_abstract_num_{entry.id}")
-                            edited_status = st.text_input("Status (for patents)", value=entry.status or '', key=f"edit_status_{entry.id}")
-                        
-                        col_save, col_cancel = st.columns(2)
-                        with col_save:
-                            save_clicked = st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
-                        with col_cancel:
-                            cancel_clicked = st.form_submit_button("❌ Cancel", use_container_width=True)
-                        
-                        # Handle form submission
-                        if save_clicked:
-                            # Validate required fields
-                            if not edited_title or not edited_title.strip():
-                                st.error("❌ Title is required!")
-                            elif not edited_authors:
-                                st.error("❌ At least one author is required!")
-                            else:
-                                try:
-                                    # Update entry
-                                    from models import Entry
-                                    updated_entry = Entry(
-                                        id=entry.id,
-                                        type=edited_type,
-                                        title=edited_title.strip(),
-                                        year=int(edited_year) if edited_year else None,
-                                        venue=edited_venue.strip() if edited_venue else None,
-                                        volume=edited_volume.strip() if edited_volume else None,
-                                        issue=edited_issue.strip() if edited_issue else None,
-                                        pages=edited_pages.strip() if edited_pages else None,
-                                        doi=edited_doi.strip() if edited_doi else None,
-                                        abstract_number=edited_abstract_number.strip() if edited_abstract_number else None,
-                                        date=edited_date.strip() if edited_date else None,
-                                        location=edited_location.strip() if edited_location else None,
-                                        status=edited_status.strip() if edited_status else None,
-                                        abstract=edited_abstract.strip() if edited_abstract else None,
-                                        url=edited_url.strip() if edited_url else None,
-                                        keywords=edited_keywords.strip() if edited_keywords else None,
-                                        subject_area=edited_subject_area.strip() if edited_subject_area else None,
-                                        citation_count=int(edited_citation_count) if edited_citation_count else None,
-                                        anum_position=entry.anum_position,
-                                        project_area=entry.project_area  # Preserve current project_area (can be updated via dropdown)
-                                    )
-                                    
-                                    # Update the entry first
-                                    if not db.update_entry(updated_entry):
-                                        st.error("❌ Failed to update entry in database.")
-                                    else:
-                                        # Update authors - delete old relationships and add new ones
-                                        current_authors = db.get_entry_authors(entry.id)
-                                        for curr_author in current_authors:
-                                            # Delete the relationship (authors themselves are kept for other entries)
-                                            db.conn.execute(
-                                                "DELETE FROM entry_authors WHERE entry_id = ? AND author_id = ?",
-                                                (entry.id, curr_author['id'])
-                                            )
-                                        
-                                        # Add updated authors
-                                        from models import Author, EntryAuthor
-                                        from citation_parser import is_anum_author, normalize_author_name
-                                        
-                                        anum_position = None
-                                        for pos, author_name in enumerate(edited_authors, 1):
-                                            if not author_name or len(author_name.strip()) < 3:
-                                                continue
-                                            
-                                            is_anum = is_anum_author(author_name)
-                                            if is_anum and anum_position is None:
-                                                anum_position = pos
-                                            
-                                            author = Author(name=normalize_author_name(author_name), is_anum=is_anum)
-                                            author_id = db.create_author(author)
-                                            
-                                            db.add_entry_author(EntryAuthor(
-                                                entry_id=entry.id,
-                                                author_id=author_id,
-                                                position=pos,
-                                                is_first_author=False
-                                            ))
-                                        
-                                        # Update Anum's position if changed
-                                        if anum_position != entry.anum_position:
-                                            updated_entry.anum_position = anum_position
-                                            db.update_entry(updated_entry)
-                                        
-                                        # Commit all changes
-                                        db.conn.commit()
-                                        
-                                        st.success("✅ Entry updated successfully!")
-                                        st.session_state[edit_key] = False
-                                        st.rerun()
-                                        
-                                except Exception as e:
-                                    st.error(f"❌ Error updating entry: {str(e)}")
-                                    import traceback
-                                    with st.expander("Error Details"):
-                                        st.code(traceback.format_exc())
-                        
-                        if cancel_clicked:
-                            st.session_state[edit_key] = False
-                            st.rerun()
-                
-                # Show action buttons when not in edit mode
-                elif not st.session_state[delete_key]:
-                    # Determine number of columns based on whether entry has DOI
-                    if entry.doi:
-                        col_actions1, col_actions2, col_actions3, col_actions4 = st.columns([2, 1, 1, 1])
+                        st.success(f"✅")
+                        st.rerun()
                     else:
-                        col_actions1, col_actions2, col_actions3 = st.columns([2, 1, 1])
+                        st.error("❌")
+                elif selected_project_area_display != st.session_state[last_processed_key]:
+                    # Selection changed but matches DB - update session state
+                    st.session_state[last_processed_key] = selected_project_area_display
+            
+            with col_expander:
+                with st.expander(header_text, expanded=False):
+                    # Title - most prominent
+                    st.markdown(f"### {entry.title}")
                     
-                    with col_actions1:
-                        st.caption(f"Entry ID: {entry.id}")
-                    with col_actions2:
-                        if st.button("✏️ Edit", key=f"edit_btn_{entry.id}", type="primary"):
-                            st.session_state[edit_key] = True
-                            st.rerun()
-                    with col_actions3:
-                        if st.button("🗑️ Delete", key=f"delete_btn_{entry.id}", type="secondary"):
-                            st.session_state[delete_key] = True
-                            st.rerun()
-                    # Only show enrich button if entry has a DOI
-                    if entry.doi:
-                        with col_actions4:
-                            if st.button("🔄 Enrich", key=f"enrich_btn_{entry.id}", 
-                                       help="Fetch latest metadata from Crossref (refreshes citation count, abstract, etc.)"):
-                                with st.spinner("Fetching data from Crossref..."):
-                                    success, message = enrich_entry_from_crossref(db, entry)
-                                    if success:
-                                        st.success(message)
+                    # Authors section
+                    if authors:
+                        author_names = [a['name'] for a in authors]
+                        author_str = ", ".join(author_names)
+                        st.markdown(f"**Authors:** {author_str}")
+                    
+                    st.markdown("---")
+                    
+                    # Details in columns
+                    col1, col2 = st.columns(2)
+                    with col1:
+                        st.markdown("**Publication Details**")
+                        if entry.venue:
+                            st.write(f"**Venue:** {entry.venue}")
+                        if entry.year:
+                            st.write(f"**Year:** {entry.year}")
+                        if entry.anum_position:
+                            position_suffix = {1: 'st', 2: 'nd', 3: 'rd'}.get(entry.anum_position, 'th')
+                            st.write(f"**Anum's Position:** {entry.anum_position}{position_suffix} author")
+                        if entry.volume or entry.issue:
+                            vol_info = []
+                            if entry.volume:
+                                vol_info.append(f"Vol. {entry.volume}")
+                            if entry.issue:
+                                vol_info.append(f"Issue {entry.issue}")
+                            if entry.pages:
+                                vol_info.append(f"pp. {entry.pages}")
+                            if vol_info:
+                                st.write(f"**Publication Info:** {', '.join(vol_info)}")
+                        if entry.doi:
+                            st.write(f"**DOI:** [{entry.doi}](https://doi.org/{entry.doi})")
+                        if entry.abstract_number:
+                            st.write(f"**Abstract #:** {entry.abstract_number}")
+                        if entry.date:
+                            st.write(f"**Date:** {entry.date}")
+                        if entry.location:
+                            st.write(f"**Location:** {entry.location}")
+                        if entry.status:
+                            st.write(f"**Status:** {entry.status}")
+                        if entry.citation_count is not None:
+                            st.write(f"**Citations:** {entry.citation_count}")
+                        if entry.subject_area:
+                            st.write(f"**Subject Area:** {entry.subject_area}")
+                    
+                    with col2:
+                        st.markdown("**Author List**")
+                        for author in authors:
+                            author_marker = " 👤" if author['is_anum'] else ""
+                            first_marker = " ⭐" if author['is_first_author'] else ""
+                            st.write(f"{author['position']}. {author['name']}{author_marker}{first_marker}")
+                    
+                    # Enriched metadata section
+                    has_enriched = entry.abstract or entry.url or entry.keywords
+                    if has_enriched:
+                        st.markdown("---")
+                        st.markdown("**Additional Information**")
+                        if entry.url:
+                            st.write(f"**URL:** [{entry.url}]({entry.url})")
+                        if entry.abstract:
+                            with st.expander("📄 Abstract", expanded=False):
+                                st.write(entry.abstract)
+                        if entry.keywords:
+                            st.write(f"**Keywords:** {entry.keywords}")
+                    
+                    # Edit and Delete buttons
+                    st.markdown("---")
+                    edit_key = f"edit_mode_{entry.id}"
+                    delete_key = f"delete_confirm_{entry.id}"
+                    
+                    # Initialize session state
+                    if edit_key not in st.session_state:
+                        st.session_state[edit_key] = False
+                    if delete_key not in st.session_state:
+                        st.session_state[delete_key] = False
+                    
+                    # Show edit form if in edit mode
+                    if st.session_state[edit_key]:
+                        with st.form(f"edit_entry_{entry.id}"):
+                            st.markdown("### ✏️ Edit Entry")
+                            
+                            col1, col2 = st.columns(2)
+                            with col1:
+                                type_options = ["publication", "book_chapter", "patent", "oral_presentation", "poster_abstract"]
+                                try:
+                                    type_index = type_options.index(entry.type)
+                                except ValueError:
+                                    type_index = 0
+                                edited_type = st.selectbox("Entry Type", type_options, index=type_index, key=f"edit_type_{entry.id}")
+                                edited_year = st.number_input("Year", value=entry.year or None, min_value=1900, max_value=2100, step=1, format="%d", key=f"edit_year_{entry.id}")
+                                edited_venue = st.text_input("Venue/Journal", value=entry.venue or '', key=f"edit_venue_{entry.id}")
+                            
+                            with col2:
+                                edited_volume = st.text_input("Volume", value=entry.volume or '', key=f"edit_volume_{entry.id}")
+                                edited_issue = st.text_input("Issue", value=entry.issue or '', key=f"edit_issue_{entry.id}")
+                                edited_pages = st.text_input("Pages", value=entry.pages or '', key=f"edit_pages_{entry.id}")
+                            
+                            edited_title = st.text_area("Title", value=entry.title or '', height=100, key=f"edit_title_{entry.id}")
+                            edited_doi = st.text_input("DOI", value=entry.doi or '', key=f"edit_doi_{entry.id}")
+                            
+                            # Authors editing
+                            st.markdown("### Authors (one per line)")
+                            authors_text = '\n'.join([a['name'] for a in authors])
+                            edited_authors_text = st.text_area(
+                                "Authors", 
+                                value=authors_text, 
+                                height=100,
+                                help="Enter authors, one per line. Format: LastName, FirstName",
+                                key=f"edit_authors_{entry.id}"
+                            )
+                            edited_authors = [a.strip() for a in edited_authors_text.split('\n') if a.strip()]
+                            
+                            # Additional fields
+                            with st.expander("Additional Fields"):
+                                edited_abstract = st.text_area("Abstract", value=entry.abstract or '', key=f"edit_abstract_{entry.id}")
+                                edited_url = st.text_input("URL", value=entry.url or '', key=f"edit_url_{entry.id}")
+                                edited_keywords = st.text_input("Keywords", value=entry.keywords or '', key=f"edit_keywords_{entry.id}")
+                                edited_subject_area = st.text_input("Subject Area", value=entry.subject_area or '', key=f"edit_subject_{entry.id}")
+                                edited_citation_count = st.number_input("Citation Count", value=entry.citation_count or 0, min_value=0, step=1, key=f"edit_citations_{entry.id}")
+                                edited_date = st.text_input("Date (for presentations)", value=entry.date or '', key=f"edit_date_{entry.id}")
+                                edited_location = st.text_input("Location (for presentations)", value=entry.location or '', key=f"edit_location_{entry.id}")
+                                edited_abstract_number = st.text_input("Abstract Number", value=entry.abstract_number or '', key=f"edit_abstract_num_{entry.id}")
+                                edited_status = st.text_input("Status (for patents)", value=entry.status or '', key=f"edit_status_{entry.id}")
+                            
+                            col_save, col_cancel = st.columns(2)
+                            with col_save:
+                                save_clicked = st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
+                            with col_cancel:
+                                cancel_clicked = st.form_submit_button("❌ Cancel", use_container_width=True)
+                            
+                            # Handle form submission
+                            if save_clicked:
+                                # Validate required fields
+                                if not edited_title or not edited_title.strip():
+                                    st.error("❌ Title is required!")
+                                elif not edited_authors:
+                                    st.error("❌ At least one author is required!")
+                                else:
+                                    try:
+                                        # Update entry
+                                        from models import Entry
+                                        updated_entry = Entry(
+                                            id=entry.id,
+                                            type=edited_type,
+                                            title=edited_title.strip(),
+                                            year=int(edited_year) if edited_year else None,
+                                            venue=edited_venue.strip() if edited_venue else None,
+                                            volume=edited_volume.strip() if edited_volume else None,
+                                            issue=edited_issue.strip() if edited_issue else None,
+                                            pages=edited_pages.strip() if edited_pages else None,
+                                            doi=edited_doi.strip() if edited_doi else None,
+                                            abstract_number=edited_abstract_number.strip() if edited_abstract_number else None,
+                                            date=edited_date.strip() if edited_date else None,
+                                            location=edited_location.strip() if edited_location else None,
+                                            status=edited_status.strip() if edited_status else None,
+                                            abstract=edited_abstract.strip() if edited_abstract else None,
+                                            url=edited_url.strip() if edited_url else None,
+                                            keywords=edited_keywords.strip() if edited_keywords else None,
+                                            subject_area=edited_subject_area.strip() if edited_subject_area else None,
+                                            citation_count=int(edited_citation_count) if edited_citation_count else None,
+                                            anum_position=entry.anum_position,
+                                            project_area=entry.project_area  # Preserve current project_area (can be updated via dropdown)
+                                        )
+                                        
+                                        # Update the entry first
+                                        if not db.update_entry(updated_entry):
+                                            st.error("❌ Failed to update entry in database.")
+                                        else:
+                                            # Update authors - delete old relationships and add new ones
+                                            current_authors = db.get_entry_authors(entry.id)
+                                            for curr_author in current_authors:
+                                                # Delete the relationship (authors themselves are kept for other entries)
+                                                db.conn.execute(
+                                                    "DELETE FROM entry_authors WHERE entry_id = ? AND author_id = ?",
+                                                    (entry.id, curr_author['id'])
+                                                )
+                                            
+                                            # Add updated authors
+                                            from models import Author, EntryAuthor
+                                            from citation_parser import is_anum_author, normalize_author_name
+                                            
+                                            anum_position = None
+                                            for pos, author_name in enumerate(edited_authors, 1):
+                                                if not author_name or len(author_name.strip()) < 3:
+                                                    continue
+                                                
+                                                is_anum = is_anum_author(author_name)
+                                                if is_anum and anum_position is None:
+                                                    anum_position = pos
+                                                
+                                                author = Author(name=normalize_author_name(author_name), is_anum=is_anum)
+                                                author_id = db.create_author(author)
+                                                
+                                                db.add_entry_author(EntryAuthor(
+                                                    entry_id=entry.id,
+                                                    author_id=author_id,
+                                                    position=pos,
+                                                    is_first_author=False
+                                                ))
+                                            
+                                            # Update Anum's position if changed
+                                            if anum_position != entry.anum_position:
+                                                updated_entry.anum_position = anum_position
+                                                db.update_entry(updated_entry)
+                                            
+                                            # Commit all changes
+                                            db.conn.commit()
+                                            
+                                            st.success("✅ Entry updated successfully!")
+                                            st.session_state[edit_key] = False
+                                            st.rerun()
+                                            
+                                    except Exception as e:
+                                        st.error(f"❌ Error updating entry: {str(e)}")
+                                        import traceback
+                                        with st.expander("Error Details"):
+                                            st.code(traceback.format_exc())
+                            
+                            if cancel_clicked:
+                                st.session_state[edit_key] = False
+                                st.rerun()
+                    
+                    # Show action buttons when not in edit mode
+                    elif not st.session_state[delete_key]:
+                        # Determine number of columns based on whether entry has DOI
+                        if entry.doi:
+                            col_actions1, col_actions2, col_actions3, col_actions4 = st.columns([2, 1, 1, 1])
+                        else:
+                            col_actions1, col_actions2, col_actions3 = st.columns([2, 1, 1])
+                        
+                        with col_actions1:
+                            st.caption(f"Entry ID: {entry.id}")
+                        with col_actions2:
+                            if st.button("✏️ Edit", key=f"edit_btn_{entry.id}", type="primary"):
+                                st.session_state[edit_key] = True
+                                st.rerun()
+                        with col_actions3:
+                            if st.button("🗑️ Delete", key=f"delete_btn_{entry.id}", type="secondary"):
+                                st.session_state[delete_key] = True
+                                st.rerun()
+                        # Only show enrich button if entry has a DOI
+                        if entry.doi:
+                            with col_actions4:
+                                if st.button("🔄 Enrich", key=f"enrich_btn_{entry.id}", 
+                                           help="Fetch latest metadata from Crossref (refreshes citation count, abstract, etc.)"):
+                                    with st.spinner("Fetching data from Crossref..."):
+                                        success, message = enrich_entry_from_crossref(db, entry)
+                                        if success:
+                                            st.success(message)
+                                            st.rerun()
+                                        else:
+                                            st.error(message)
+                    else:
+                        # Show delete confirmation
+                        st.warning("⚠️ Are you sure you want to delete this entry? This action cannot be undone.")
+                        st.caption(f"Entry ID: {entry.id} - {entry.title[:80]}...")
+                        confirm_col1, confirm_col2 = st.columns(2)
+                        with confirm_col1:
+                            if st.button("✅ Confirm Delete", key=f"confirm_{entry.id}", type="primary"):
+                                try:
+                                    if db.delete_entry(entry.id):
+                                        st.success("✅ Entry deleted successfully!")
+                                        st.session_state[delete_key] = False
                                         st.rerun()
                                     else:
-                                        st.error(message)
-                else:
-                    # Show delete confirmation
-                    st.warning("⚠️ Are you sure you want to delete this entry? This action cannot be undone.")
-                    st.caption(f"Entry ID: {entry.id} - {entry.title[:80]}...")
-                    confirm_col1, confirm_col2 = st.columns(2)
-                    with confirm_col1:
-                        if st.button("✅ Confirm Delete", key=f"confirm_{entry.id}", type="primary"):
-                            try:
-                                if db.delete_entry(entry.id):
-                                    st.success("✅ Entry deleted successfully!")
+                                        st.error("Failed to delete entry.")
+                                        st.session_state[delete_key] = False
+                                except Exception as e:
+                                    st.error(f"Error deleting entry: {str(e)}")
                                     st.session_state[delete_key] = False
-                                    st.rerun()
-                                else:
-                                    st.error("Failed to delete entry.")
-                                    st.session_state[delete_key] = False
-                            except Exception as e:
-                                st.error(f"Error deleting entry: {str(e)}")
+                        with confirm_col2:
+                            if st.button("❌ Cancel", key=f"cancel_{entry.id}"):
                                 st.session_state[delete_key] = False
-                    with confirm_col2:
-                        if st.button("❌ Cancel", key=f"cancel_{entry.id}"):
-                            st.session_state[delete_key] = False
-                            st.rerun()
+                                st.rerun()
     else:
         st.info("No entries found. Try adjusting your filters or search query.")
     
