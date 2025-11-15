@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: anum-papers-db
+    ports:
+      - "8501:8501"
+    volumes:
+      # Mount data directory for database persistence
+      - ./data:/app/data
+      # Mount schema.sql for reference (already copied in image, but useful for updates)
+      - ./schema.sql:/app/schema.sql:ro
+    environment:
+      # Database path in container
+      - DATABASE_PATH=/app/data/anum_papers.db
+      # GROBID URL - adjust based on your Docker network setup
+      # If GROBID is on same Docker network, use service name: http://grobid:8070
+      # If using host network or external, use: http://host.docker.internal:8070
+      - GROBID_URL=${GROBID_URL:-http://grobid:8070}
+    restart: unless-stopped
+    networks:
+      # Use the same network as GROBID if it's running in Docker
+      # Or use 'host' network mode if GROBID is on host
+      - default
+    healthcheck:
+      test: ["CMD", "python", "-c", "import requests; requests.get('http://localhost:8501/_stcore/health')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+networks:
+  default:
+    # If GROBID is on a specific network, use external network:
+    # external: true
+    # name: your-grobid-network
+    driver: bridge
+

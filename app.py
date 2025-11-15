@@ -8,6 +8,9 @@ from db import Database
 from models import Entry, Author
 from citation_parser import create_entry_from_citation, parse_citation
 
+# Get database path from environment variable or use default
+DATABASE_PATH = os.getenv("DATABASE_PATH", "anum_papers.db")
+
 # Page configuration
 st.set_page_config(
     page_title="Anum Papers Database",
@@ -19,8 +22,20 @@ st.set_page_config(
 def get_database():
     """Get database connection (per session)."""
     if 'db' not in st.session_state:
-        st.session_state.db = Database("anum_papers.db")
+        # Ensure data directory exists if using custom path
+        db_dir = os.path.dirname(DATABASE_PATH)
+        if db_dir and not os.path.exists(db_dir):
+            os.makedirs(db_dir, exist_ok=True)
+        
+        st.session_state.db = Database(DATABASE_PATH)
         st.session_state.db.connect()
+        
+        # Check if database needs initialization
+        try:
+            st.session_state.db.conn.execute("SELECT COUNT(*) FROM entries LIMIT 1").fetchone()
+        except sqlite3.OperationalError:
+            # Database not initialized, initialize it
+            st.session_state.db.initialize()
     else:
         # Ensure connection is still active
         try:

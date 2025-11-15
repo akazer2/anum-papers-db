@@ -10,12 +10,14 @@ Parser stack (in order of preference):
 
 import re
 import json
+import os
 import requests
 from typing import Optional, Dict, List, Tuple, Union
 from models import Entry, Author, EntryAuthor
 
 # GROBID configuration (optional - requires GROBID server running)
-GROBID_URL = "http://192.168.20.139:8070"  # GROBID server URL
+# Get GROBID URL from environment variable or use default
+GROBID_URL = os.getenv("GROBID_URL", "http://192.168.20.139:8070")
 GROBID_AVAILABLE = False
 
 # Check if GROBID server is available
@@ -44,14 +46,56 @@ try:
 except ImportError:
     ONECITE_AVAILABLE = False
 
-# Anum's name variations
+# Anum's name variations - comprehensive list
+# Includes: Kazerouni, Syed, Kamal (middle name), and all combinations
 ANUM_NAMES = [
+    # Last, First format with initials
     "Kazerouni, A. S.",
     "Kazerouni, A.S.",
+    "Kazerouni, A. S",
+    "Kazerouni, AS",
     "Syed, A. K.",
     "Syed, A.K.",
+    "Syed, A. K",
+    "Syed, AK",
+    "Syed, A. K. K.",  # With Kamal middle initial
+    "Syed, A.K.K.",
+    "Syed, A. K. K",
+    "Syed, AKK",
+    # First Last format with initials
+    "A. S. Kazerouni",
+    "A.S. Kazerouni",
+    "A S Kazerouni",
+    "AS Kazerouni",
+    "A. K. Syed",
+    "A.K. Syed",
+    "A K Syed",
+    "AK Syed",
+    "A. K. K. Syed",  # With Kamal middle initial
+    "A.K.K. Syed",
+    "A K K Syed",
+    "AKK Syed",
+    # Full names
+    "Anum Syed Kazerouni",
+    "Anum Kazerouni",
+    "Anum Syed",
+    "Anum Kamal Syed",
+    "Anum K. Syed",
+    "Anum K Syed",
+    # Last, First format with full names
+    "Kazerouni, Anum",
+    "Kazerouni, Anum S.",
+    "Kazerouni, Anum S",
+    "Syed, Anum",
+    "Syed, Anum K.",
+    "Syed, Anum K",
+    "Syed, Anum Kamal",
+    "Syed, Anum K. K.",
+    # Variations with different spacing/punctuation
     "Syed A. K.",
     "Syed A.K.",
+    "Kazerouni A. S.",
+    "Kazerouni A.S.",
 ]
 
 def normalize_author_name(name: str) -> str:
@@ -61,11 +105,78 @@ def normalize_author_name(name: str) -> str:
     return name
 
 def is_anum_author(name: str) -> bool:
-    """Check if author is Anum."""
+    """Check if author is Anum.
+    
+    Matches against comprehensive list of name variations including:
+    - Kazerouni, Syed, Kamal (middle name) combinations
+    - Full names and initials
+    - Different formats (Last, First vs First Last)
+    - Case-insensitive matching
+    """
     normalized = normalize_author_name(name)
+    normalized_lower = normalized.lower()
+    
+    # First, check exact matches against known variations
     for anum_name in ANUM_NAMES:
-        if normalize_author_name(anum_name).lower() == normalized.lower():
+        if normalize_author_name(anum_name).lower() == normalized_lower:
             return True
+    
+    # Pattern-based matching for flexible recognition
+    # Extract all name parts (split by comma, space, or period)
+    # Remove empty strings and normalize
+    name_parts = [p.strip() for p in re.split(r'[,\s.]+', normalized_lower) if p.strip()]
+    
+    if not name_parts:
+        return False
+    
+    # Check if "anum" appears in the name
+    has_anum = 'anum' in name_parts
+    
+    # Check for Anum's last names
+    has_syed = 'syed' in name_parts
+    has_kazerouni = 'kazerouni' in name_parts
+    has_kamal = 'kamal' in name_parts
+    
+    # Check for initials pattern: look for "a" followed by "k" or "s"
+    # Handle formats like "A. K.", "A.K.", "A K", "AK", etc.
+    has_ak_pattern = False
+    has_as_pattern = False
+    
+    # Check for "ak" or "a.k" as single tokens
+    for part in name_parts:
+        if part in ['ak', 'a.k', 'akk']:
+            has_ak_pattern = True
+        if part in ['as', 'a.s']:
+            has_as_pattern = True
+    
+    # Check for sequential pattern: "a" followed by "k" or "s"
+    for i in range(len(name_parts) - 1):
+        if name_parts[i] == 'a':
+            next_part = name_parts[i + 1] if i + 1 < len(name_parts) else ''
+            if next_part in ['k', 's']:
+                if next_part == 'k':
+                    has_ak_pattern = True
+                else:
+                    has_as_pattern = True
+            # Also check for "a" followed by "k" followed by another "k" (A.K.K.)
+            if i + 2 < len(name_parts) and next_part == 'k' and name_parts[i + 2] == 'k':
+                has_ak_pattern = True
+    
+    # Match if:
+    # 1. Has "anum" AND (has "syed" OR "kazerouni")
+    # 2. Has "syed" OR "kazerouni" AND has initials A.K. or A.S.
+    # 3. Has both "syed" and "kazerouni" (regardless of other parts)
+    # 4. Has "anum" with "kamal" (middle name)
+    
+    if has_anum and (has_syed or has_kazerouni or has_kamal):
+        return True
+    
+    if (has_syed or has_kazerouni) and (has_ak_pattern or has_as_pattern):
+        return True
+    
+    if has_syed and has_kazerouni:
+        return True
+    
     return False
 
 def parse_with_grobid(citation_text: str) -> Optional[Dict]:
@@ -1044,8 +1155,20 @@ def parse_citation(citation_text: str, default_type: str = "publication") -> Opt
         metadata = lookup_doi_metadata(doi)
         if metadata and metadata.get('title'):
             entry_type = determine_entry_type(citation_text.lower())
+            
+            # CRITICAL: Parse authors from citation text first to preserve original format
+            # Crossref returns full names (e.g., "Syed, Adil") but citation may have initials (e.g., "Syed, A. K.")
+            # We prefer the citation text format as it's what the user provided
+            citation_authors = []
+            fallback_parsed = parse_citation_fallback(citation_text)
+            if fallback_parsed and fallback_parsed.get('authors'):
+                citation_authors = fallback_parsed.get('authors', [])
+            
+            # Only use Crossref authors if we couldn't parse any from citation text
+            authors_to_use = citation_authors if citation_authors else metadata.get('authors', [])
+            
             first_author_indices = extract_first_author_positions(
-                metadata.get('authors', []), citation_text, metadata['title']
+                authors_to_use, citation_text, metadata['title']
             )
             
             return {
@@ -1062,7 +1185,7 @@ def parse_citation(citation_text: str, default_type: str = "publication") -> Opt
                 'keywords': metadata.get('keywords'),
                 'subject_area': metadata.get('subject_area'),
                 'citation_count': metadata.get('citation_count'),
-                'authors': metadata.get('authors', []),
+                'authors': authors_to_use,  # Use citation-parsed authors, not Crossref authors
                 'first_author_positions': first_author_indices
             }
     
@@ -1080,9 +1203,11 @@ def parse_citation(citation_text: str, default_type: str = "publication") -> Opt
             )
             
             if openalex_metadata:
-                # Merge fallback + OpenAlex (prefer OpenAlex for metadata)
+                # Merge fallback + OpenAlex (prefer citation-parsed authors over OpenAlex)
+                # Citation text format (e.g., "Syed, A. K.") is preferred over OpenAlex format (e.g., "Syed, Adil")
                 entry_type = determine_entry_type(citation_text.lower())
-                authors = openalex_metadata.get('authors') or fallback_parsed.get('authors', [])
+                # Prefer fallback (citation-parsed) authors over OpenAlex authors
+                authors = fallback_parsed.get('authors', []) or openalex_metadata.get('authors', [])
                 first_author_indices = extract_first_author_positions(
                     authors, citation_text, openalex_metadata.get('title', fallback_parsed['title'])
                 )
