@@ -876,7 +876,7 @@ def show_search_page(db):
             header_text = f"{entry.title[:80]}{'...' if len(entry.title) > 80 else ''} • {type_badge}"
             
             # Layout with dropdown next to expander
-            col_dropdown, col_expander = st.columns([1, 4])
+            col_dropdown, col_expander = st.columns([1.2, 4.8])
             
             with col_dropdown:
                 # Project area dropdown - always visible for quick assignment
@@ -886,6 +886,9 @@ def show_search_page(db):
                 # Initialize last processed value if not set
                 if last_processed_key not in st.session_state:
                     st.session_state[last_processed_key] = current_project_area_display
+                
+                # Small spacer to align with expander
+                st.markdown("")
                 
                 # Get current selection from dropdown
                 selected_project_area_display = st.selectbox(
@@ -904,10 +907,9 @@ def show_search_page(db):
                     entry.project_area = selected_project_area
                     if db.update_entry(entry):
                         st.session_state[last_processed_key] = selected_project_area_display
-                        st.success(f"✅")
                         st.rerun()
                     else:
-                        st.error("❌")
+                        st.error("❌ Failed")
                 elif selected_project_area_display != st.session_state[last_processed_key]:
                     # Selection changed but matches DB - update session state
                     st.session_state[last_processed_key] = selected_project_area_display
