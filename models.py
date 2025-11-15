@@ -27,6 +27,7 @@ class Entry:
     subject_area: Optional[str] = None  # subject area/category
     citation_count: Optional[int] = None  # number of citations
     anum_position: Optional[int] = None  # Anum's author position (1-based, NULL if not an author)
+    project_area: Optional[str] = None  # project area assignment
     created_at: Optional[datetime] = None
     updated_at: Optional[datetime] = None
     
@@ -51,6 +52,7 @@ class Entry:
             'subject_area': self.subject_area,
             'citation_count': self.citation_count,
             'anum_position': self.anum_position,
+            'project_area': self.project_area,
         }
         if self.id is not None:
             result['id'] = self.id
@@ -83,6 +85,7 @@ class Entry:
             subject_area=data.get('subject_area'),
             citation_count=data.get('citation_count'),
             anum_position=data.get('anum_position'),
+            project_area=data.get('project_area'),
             created_at=data.get('created_at'),
             updated_at=data.get('updated_at'),
         )

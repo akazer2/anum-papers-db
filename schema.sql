@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS entries (
     subject_area TEXT,  -- subject area/category
     citation_count INTEGER,  -- number of citations
     anum_position INTEGER,  -- Anum's author position (1-based, NULL if not an author)
+    project_area TEXT,  -- project area assignment (tme_evolution, pet_mri, ex_vivo_biology, response_modeling)
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
@@ -53,4 +54,5 @@ CREATE INDEX IF NOT EXISTS idx_entry_authors_entry_id ON entry_authors(entry_id)
 CREATE INDEX IF NOT EXISTS idx_entry_authors_author_id ON entry_authors(author_id);
 CREATE INDEX IF NOT EXISTS idx_authors_is_anum ON authors(is_anum);
 CREATE INDEX IF NOT EXISTS idx_entries_anum_position ON entries(anum_position);
+CREATE INDEX IF NOT EXISTS idx_entries_project_area ON entries(project_area);
 

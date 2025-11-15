@@ -11,6 +11,26 @@ from citation_parser import create_entry_from_citation, parse_citation
 # Get database path from environment variable or use default
 DATABASE_PATH = os.getenv("DATABASE_PATH", "anum_papers.db")
 
+# Project area mappings (display name -> database value)
+PROJECT_AREAS = {
+    "None": None,
+    "TME Evolution": "tme_evolution",
+    "PET/MRI": "pet_mri",
+    "Ex Vivo Biology": "ex_vivo_biology",
+    "Response Modeling": "response_modeling",
+    "Breast MRI Screening": "breast_mri_screening"
+}
+
+# Reverse mapping for display (database value -> display name)
+PROJECT_AREA_DISPLAY = {
+    None: "None",
+    "tme_evolution": "TME Evolution",
+    "pet_mri": "PET/MRI",
+    "ex_vivo_biology": "Ex Vivo Biology",
+    "response_modeling": "Response Modeling",
+    "breast_mri_screening": "Breast MRI Screening"
+}
+
 # Page configuration
 st.set_page_config(
     page_title="Anum Papers Database",
@@ -134,7 +154,8 @@ def enrich_entry_from_crossref(db, entry: Entry) -> Tuple[bool, str]:
             keywords=entry.keywords or metadata.get('keywords'),
             subject_area=entry.subject_area or metadata.get('subject_area'),
             citation_count=metadata.get('citation_count'),  # Always refresh citation count
-            anum_position=entry.anum_position  # Don't change
+            anum_position=entry.anum_position,  # Don't change
+            project_area=entry.project_area  # Don't change
         )
         
         if db.update_entry(updated_entry):
@@ -263,6 +284,15 @@ def show_add_citations_page(db):
                     edited_location = st.text_input("Location (for presentations)", value=parsed.get('location', '') or '')
                     edited_abstract_number = st.text_input("Abstract Number", value=parsed.get('abstract_number', '') or '')
                     edited_status = st.text_input("Status (for patents)", value=parsed.get('status', '') or '')
+                    # Project area dropdown
+                    parsed_project_area = parsed.get('project_area')
+                    project_area_display = PROJECT_AREA_DISPLAY.get(parsed_project_area, "None")
+                    edited_project_area_display = st.selectbox(
+                        "Project Area",
+                        list(PROJECT_AREAS.keys()),
+                        index=list(PROJECT_AREAS.keys()).index(project_area_display) if project_area_display in PROJECT_AREAS else 0
+                    )
+                    edited_project_area = PROJECT_AREAS[edited_project_area_display]
                 
                 submitted = st.form_submit_button("💾 Save to Database", type="primary", use_container_width=True)
                 
@@ -292,7 +322,8 @@ def show_add_citations_page(db):
                             url=edited_url if edited_url else None,
                             keywords=edited_keywords if edited_keywords else None,
                             subject_area=edited_subject_area if edited_subject_area else None,
-                            citation_count=int(edited_citation_count) if edited_citation_count else None
+                            citation_count=int(edited_citation_count) if edited_citation_count else None,
+                            project_area=edited_project_area
                         )
                         
                         try:
@@ -791,6 +822,11 @@ def show_search_page(db):
         author_options = ["All"] + [a.name for a in authors]
         selected_author = st.selectbox("Author", author_options)
         author_filter = None if selected_author == "All" else selected_author
+        
+        # Project area filter
+        project_area_options = ["All"] + [k for k in PROJECT_AREAS.keys() if k != "None"]
+        selected_project_area_display = st.selectbox("Project Area", project_area_options)
+        project_area_filter = None if selected_project_area_display == "All" else PROJECT_AREAS[selected_project_area_display]
     
     # Search bar
     search_query = st.text_input("🔍 Search", placeholder="Search by title, venue, or keywords...")
@@ -801,15 +837,17 @@ def show_search_page(db):
         author = db.get_author_by_name(author_filter)
         if author:
             entries = db.get_entries_by_author(author.id)
-            # Apply type and year filters
+            # Apply type, year, and project_area filters
             if entry_type_filter:
                 entries = [e for e in entries if e.type == entry_type_filter]
             if year_filter:
                 entries = [e for e in entries if e.year == year_filter]
+            if project_area_filter:
+                entries = [e for e in entries if e.project_area == project_area_filter]
         else:
             entries = []
     else:
-        entries = db.get_all_entries(entry_type=entry_type_filter, year=year_filter)
+        entries = db.get_all_entries(entry_type=entry_type_filter, year=year_filter, project_area=project_area_filter)
     
     # Apply search query filter
     if search_query:
@@ -884,6 +922,9 @@ def show_search_page(db):
                         st.write(f"**Citations:** {entry.citation_count}")
                     if entry.subject_area:
                         st.write(f"**Subject Area:** {entry.subject_area}")
+                    if entry.project_area:
+                        project_area_display = PROJECT_AREA_DISPLAY.get(entry.project_area, entry.project_area)
+                        st.write(f"**Project Area:** {project_area_display}")
                 
                 with col2:
                     st.markdown("**Author List**")
@@ -963,6 +1004,15 @@ def show_search_page(db):
                             edited_location = st.text_input("Location (for presentations)", value=entry.location or '', key=f"edit_location_{entry.id}")
                             edited_abstract_number = st.text_input("Abstract Number", value=entry.abstract_number or '', key=f"edit_abstract_num_{entry.id}")
                             edited_status = st.text_input("Status (for patents)", value=entry.status or '', key=f"edit_status_{entry.id}")
+                            # Project area dropdown
+                            entry_project_area_display = PROJECT_AREA_DISPLAY.get(entry.project_area, "None")
+                            edited_project_area_display = st.selectbox(
+                                "Project Area",
+                                list(PROJECT_AREAS.keys()),
+                                index=list(PROJECT_AREAS.keys()).index(entry_project_area_display) if entry_project_area_display in PROJECT_AREAS else 0,
+                                key=f"edit_project_area_{entry.id}"
+                            )
+                            edited_project_area = PROJECT_AREAS[edited_project_area_display]
                         
                         col_save, col_cancel = st.columns(2)
                         with col_save:
@@ -1000,7 +1050,8 @@ def show_search_page(db):
                                         keywords=edited_keywords.strip() if edited_keywords else None,
                                         subject_area=edited_subject_area.strip() if edited_subject_area else None,
                                         citation_count=int(edited_citation_count) if edited_citation_count else None,
-                                        anum_position=entry.anum_position
+                                        anum_position=entry.anum_position,
+                                        project_area=edited_project_area
                                     )
                                     
                                     # Update the entry first

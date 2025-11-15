@@ -151,14 +151,14 @@ class Database:
             INSERT INTO entries (type, title, year, venue, volume, issue, pages, 
                                doi, abstract_number, date, location, status,
                                abstract, url, keywords, subject_area, citation_count,
-                               anum_position, created_at, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                               anum_position, project_area, created_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
             entry.type, entry.title, entry.year, entry.venue, entry.volume,
             entry.issue, entry.pages, entry.doi, entry.abstract_number,
             entry.date, entry.location, entry.status,
             entry.abstract, entry.url, entry.keywords, entry.subject_area, entry.citation_count,
-            entry.anum_position, entry.created_at, entry.updated_at
+            entry.anum_position, entry.project_area, entry.created_at, entry.updated_at
         ))
         
         self.conn.commit()
@@ -185,12 +185,14 @@ class Database:
         return None
     
     def get_all_entries(self, entry_type: Optional[str] = None, 
-                       year: Optional[int] = None) -> List[Entry]:
-        """Get all entries, optionally filtered by type and/or year.
+                       year: Optional[int] = None,
+                       project_area: Optional[str] = None) -> List[Entry]:
+        """Get all entries, optionally filtered by type, year, and/or project_area.
         
         Args:
             entry_type: Optional filter by entry type
             year: Optional filter by year
+            project_area: Optional filter by project area
             
         Returns:
             List of Entry objects
@@ -209,10 +211,25 @@ class Database:
             query += " AND year = ?"
             params.append(year)
         
+        if project_area:
+            query += " AND project_area = ?"
+            params.append(project_area)
+        
         query += " ORDER BY year DESC, id DESC"
         
         rows = self.conn.execute(query, params).fetchall()
         return [Entry.from_dict(dict(row)) for row in rows]
+    
+    def get_entries_by_project_area(self, project_area: str) -> List[Entry]:
+        """Get all entries for a specific project area.
+        
+        Args:
+            project_area: Project area identifier (snake_case)
+            
+        Returns:
+            List of Entry objects
+        """
+        return self.get_all_entries(project_area=project_area)
     
     def update_entry(self, entry: Entry) -> bool:
         """Update an existing entry.
@@ -237,14 +254,14 @@ class Database:
                 issue = ?, pages = ?, doi = ?, abstract_number = ?, 
                 date = ?, location = ?, status = ?,
                 abstract = ?, url = ?, keywords = ?, subject_area = ?, citation_count = ?,
-                anum_position = ?, updated_at = ?
+                anum_position = ?, project_area = ?, updated_at = ?
             WHERE id = ?
         """, (
             entry.type, entry.title, entry.year, entry.venue, entry.volume,
             entry.issue, entry.pages, entry.doi, entry.abstract_number,
             entry.date, entry.location, entry.status,
             entry.abstract, entry.url, entry.keywords, entry.subject_area, entry.citation_count,
-            entry.anum_position, entry.updated_at, entry.id
+            entry.anum_position, entry.project_area, entry.updated_at, entry.id
         ))
         
         self.conn.commit()

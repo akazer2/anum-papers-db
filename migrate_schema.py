@@ -18,7 +18,8 @@ def migrate_database(db_path="anum_papers.db"):
         'keywords': 'TEXT',
         'subject_area': 'TEXT',
         'citation_count': 'INTEGER',
-        'anum_position': 'INTEGER'
+        'anum_position': 'INTEGER',
+        'project_area': 'TEXT'
     }
     
     added = []
