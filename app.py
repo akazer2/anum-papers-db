@@ -922,9 +922,6 @@ def show_search_page(db):
                         st.write(f"**Citations:** {entry.citation_count}")
                     if entry.subject_area:
                         st.write(f"**Subject Area:** {entry.subject_area}")
-                    if entry.project_area:
-                        project_area_display = PROJECT_AREA_DISPLAY.get(entry.project_area, entry.project_area)
-                        st.write(f"**Project Area:** {project_area_display}")
                 
                 with col2:
                     st.markdown("**Author List**")
@@ -932,6 +929,41 @@ def show_search_page(db):
                         author_marker = " 👤" if author['is_anum'] else ""
                         first_marker = " ⭐" if author['is_first_author'] else ""
                         st.write(f"{author['position']}. {author['name']}{author_marker}{first_marker}")
+                    
+                    # Project area dropdown - easy assignment
+                    st.markdown("---")
+                    st.markdown("**Project Area**")
+                    current_project_area_display = PROJECT_AREA_DISPLAY.get(entry.project_area, "None")
+                    last_processed_key = f"last_project_area_{entry.id}"
+                    
+                    # Initialize last processed value if not set
+                    if last_processed_key not in st.session_state:
+                        st.session_state[last_processed_key] = current_project_area_display
+                    
+                    # Get current selection from dropdown
+                    selected_project_area_display = st.selectbox(
+                        "Assign to project:",
+                        list(PROJECT_AREAS.keys()),
+                        index=list(PROJECT_AREAS.keys()).index(current_project_area_display) if current_project_area_display in PROJECT_AREAS else 0,
+                        key=f"selectbox_project_area_{entry.id}",
+                        label_visibility="collapsed"
+                    )
+                    
+                    # Update if selection changed from both current DB value and last processed value
+                    if (selected_project_area_display != current_project_area_display and 
+                        selected_project_area_display != st.session_state[last_processed_key]):
+                        selected_project_area = PROJECT_AREAS[selected_project_area_display]
+                        # Update entry in database
+                        entry.project_area = selected_project_area
+                        if db.update_entry(entry):
+                            st.session_state[last_processed_key] = selected_project_area_display
+                            st.success(f"✅ Updated to {selected_project_area_display}")
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to update project area")
+                    elif selected_project_area_display != st.session_state[last_processed_key]:
+                        # Selection changed but matches DB - update session state
+                        st.session_state[last_processed_key] = selected_project_area_display
                 
                 # Enriched metadata section
                 has_enriched = entry.abstract or entry.url or entry.keywords
@@ -1004,15 +1036,6 @@ def show_search_page(db):
                             edited_location = st.text_input("Location (for presentations)", value=entry.location or '', key=f"edit_location_{entry.id}")
                             edited_abstract_number = st.text_input("Abstract Number", value=entry.abstract_number or '', key=f"edit_abstract_num_{entry.id}")
                             edited_status = st.text_input("Status (for patents)", value=entry.status or '', key=f"edit_status_{entry.id}")
-                            # Project area dropdown
-                            entry_project_area_display = PROJECT_AREA_DISPLAY.get(entry.project_area, "None")
-                            edited_project_area_display = st.selectbox(
-                                "Project Area",
-                                list(PROJECT_AREAS.keys()),
-                                index=list(PROJECT_AREAS.keys()).index(entry_project_area_display) if entry_project_area_display in PROJECT_AREAS else 0,
-                                key=f"edit_project_area_{entry.id}"
-                            )
-                            edited_project_area = PROJECT_AREAS[edited_project_area_display]
                         
                         col_save, col_cancel = st.columns(2)
                         with col_save:
@@ -1051,7 +1074,7 @@ def show_search_page(db):
                                         subject_area=edited_subject_area.strip() if edited_subject_area else None,
                                         citation_count=int(edited_citation_count) if edited_citation_count else None,
                                         anum_position=entry.anum_position,
-                                        project_area=edited_project_area
+                                        project_area=entry.project_area  # Preserve current project_area (can be updated via dropdown)
                                     )
                                     
                                     # Update the entry first
