@@ -17,8 +17,8 @@ PROJECT_AREAS = {
     "TME Evolution": "tme_evolution",
     "PET/MRI": "pet_mri",
     "Ex Vivo Biology": "ex_vivo_biology",
-    "Response Modeling": "response_modeling",
-    "Breast MRI Screening": "breast_mri_screening"
+    "Forecasting": "response_modeling",
+    "Breast MRI": "breast_mri_screening"
 }
 
 # Reverse mapping for display (database value -> display name)
@@ -27,8 +27,8 @@ PROJECT_AREA_DISPLAY = {
     "tme_evolution": "TME Evolution",
     "pet_mri": "PET/MRI",
     "ex_vivo_biology": "Ex Vivo Biology",
-    "response_modeling": "Response Modeling",
-    "breast_mri_screening": "Breast MRI Screening"
+    "response_modeling": "Forecasting",
+    "breast_mri_screening": "Breast MRI"
 }
 
 # Page configuration
