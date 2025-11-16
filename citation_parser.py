@@ -1068,68 +1068,70 @@ def parse_citation(citation_text: str, default_type: str = "publication") -> Opt
                 metadata.get('authors', []), citation_text, metadata['title']
             )
             
+            # Skip DOI enrichment for oral presentations and poster abstracts
             # Enrich with Crossref if DOI found (from GROBID, extracted from text, or from URLs)
-            doi = metadata.get('doi') or extract_doi(citation_text)
-            # Also check if we can extract DOI from any URLs we might have
-            if not doi and metadata.get('url'):
-                doi = extract_doi_from_url(metadata.get('url'))
-            
-            if doi and HABANERO_AVAILABLE:
-                if not metadata.get('doi'):
-                    metadata['doi'] = doi  # Store extracted DOI
-                crossref_metadata = lookup_doi_metadata(doi)
-                if crossref_metadata:
-                    # Merge GROBID + Crossref data (prefer GROBID for parsing, Crossref for enrichment)
-                    metadata.update({
-                        'abstract': crossref_metadata.get('abstract') or metadata.get('abstract'),
-                        'url': crossref_metadata.get('url') or metadata.get('url'),
-                        'keywords': crossref_metadata.get('keywords') or metadata.get('keywords'),
-                        'subject_area': crossref_metadata.get('subject_area') or metadata.get('subject_area'),
-                        'citation_count': crossref_metadata.get('citation_count') or metadata.get('citation_count'),
-                    })
-                    # If Crossref URL contains a DOI, extract it (in case we didn't have it before)
-                    if crossref_metadata.get('url') and not metadata.get('doi'):
-                        url_doi = extract_doi_from_url(crossref_metadata.get('url'))
-                        if url_doi:
-                            metadata['doi'] = url_doi
-            
-            # Also try OpenAlex enrichment if no DOI or if we want additional metadata
-            if OPENALEX_AVAILABLE and metadata.get('title'):
-                openalex_metadata = lookup_openalex(
-                    citation_text,
-                    title=metadata.get('title'),
-                    authors=metadata.get('authors'),
-                    year=metadata.get('year')
-                )
-                if openalex_metadata:
-                    # Extract DOI from OpenAlex (from doi field or URL)
-                    openalex_doi = openalex_metadata.get('doi')
-                    if not openalex_doi and openalex_metadata.get('url'):
-                        openalex_doi = extract_doi_from_url(openalex_metadata.get('url'))
-                    
-                    # If OpenAlex found a DOI we didn't have, use it for Crossref enrichment
-                    if not doi and openalex_doi and HABANERO_AVAILABLE:
-                        metadata['doi'] = openalex_doi
-                        crossref_metadata = lookup_doi_metadata(openalex_doi)
-                        if crossref_metadata:
-                            # Merge Crossref data from OpenAlex-found DOI
-                            metadata.update({
-                                'abstract': crossref_metadata.get('abstract') or metadata.get('abstract'),
-                                'url': crossref_metadata.get('url') or metadata.get('url'),
-                                'keywords': crossref_metadata.get('keywords') or metadata.get('keywords'),
-                                'subject_area': crossref_metadata.get('subject_area') or metadata.get('subject_area'),
-                                'citation_count': crossref_metadata.get('citation_count') or metadata.get('citation_count'),
-                            })
-                    
-                    # Merge OpenAlex data (only fill in missing fields)
-                    if not metadata.get('abstract') and openalex_metadata.get('abstract'):
-                        metadata['abstract'] = openalex_metadata.get('abstract')
-                    if not metadata.get('url') and openalex_metadata.get('url'):
-                        metadata['url'] = openalex_metadata.get('url')
-                    if not metadata.get('keywords') and openalex_metadata.get('keywords'):
-                        metadata['keywords'] = openalex_metadata.get('keywords')
-                    if not metadata.get('citation_count') and openalex_metadata.get('citation_count'):
-                        metadata['citation_count'] = openalex_metadata.get('citation_count')
+            if entry_type not in ['oral_presentation', 'poster_abstract']:
+                doi = metadata.get('doi') or extract_doi(citation_text)
+                # Also check if we can extract DOI from any URLs we might have
+                if not doi and metadata.get('url'):
+                    doi = extract_doi_from_url(metadata.get('url'))
+                
+                if doi and HABANERO_AVAILABLE:
+                    if not metadata.get('doi'):
+                        metadata['doi'] = doi  # Store extracted DOI
+                    crossref_metadata = lookup_doi_metadata(doi)
+                    if crossref_metadata:
+                        # Merge GROBID + Crossref data (prefer GROBID for parsing, Crossref for enrichment)
+                        metadata.update({
+                            'abstract': crossref_metadata.get('abstract') or metadata.get('abstract'),
+                            'url': crossref_metadata.get('url') or metadata.get('url'),
+                            'keywords': crossref_metadata.get('keywords') or metadata.get('keywords'),
+                            'subject_area': crossref_metadata.get('subject_area') or metadata.get('subject_area'),
+                            'citation_count': crossref_metadata.get('citation_count') or metadata.get('citation_count'),
+                        })
+                        # If Crossref URL contains a DOI, extract it (in case we didn't have it before)
+                        if crossref_metadata.get('url') and not metadata.get('doi'):
+                            url_doi = extract_doi_from_url(crossref_metadata.get('url'))
+                            if url_doi:
+                                metadata['doi'] = url_doi
+                
+                # Also try OpenAlex enrichment if no DOI or if we want additional metadata
+                if OPENALEX_AVAILABLE and metadata.get('title'):
+                    openalex_metadata = lookup_openalex(
+                        citation_text,
+                        title=metadata.get('title'),
+                        authors=metadata.get('authors'),
+                        year=metadata.get('year')
+                    )
+                    if openalex_metadata:
+                        # Extract DOI from OpenAlex (from doi field or URL)
+                        openalex_doi = openalex_metadata.get('doi')
+                        if not openalex_doi and openalex_metadata.get('url'):
+                            openalex_doi = extract_doi_from_url(openalex_metadata.get('url'))
+                        
+                        # If OpenAlex found a DOI we didn't have, use it for Crossref enrichment
+                        if not doi and openalex_doi and HABANERO_AVAILABLE:
+                            metadata['doi'] = openalex_doi
+                            crossref_metadata = lookup_doi_metadata(openalex_doi)
+                            if crossref_metadata:
+                                # Merge Crossref data from OpenAlex-found DOI
+                                metadata.update({
+                                    'abstract': crossref_metadata.get('abstract') or metadata.get('abstract'),
+                                    'url': crossref_metadata.get('url') or metadata.get('url'),
+                                    'keywords': crossref_metadata.get('keywords') or metadata.get('keywords'),
+                                    'subject_area': crossref_metadata.get('subject_area') or metadata.get('subject_area'),
+                                    'citation_count': crossref_metadata.get('citation_count') or metadata.get('citation_count'),
+                                })
+                        
+                        # Merge OpenAlex data (only fill in missing fields)
+                        if not metadata.get('abstract') and openalex_metadata.get('abstract'):
+                            metadata['abstract'] = openalex_metadata.get('abstract')
+                        if not metadata.get('url') and openalex_metadata.get('url'):
+                            metadata['url'] = openalex_metadata.get('url')
+                        if not metadata.get('keywords') and openalex_metadata.get('keywords'):
+                            metadata['keywords'] = openalex_metadata.get('keywords')
+                        if not metadata.get('citation_count') and openalex_metadata.get('citation_count'):
+                            metadata['citation_count'] = openalex_metadata.get('citation_count')
             
             return {
                 'type': entry_type,
@@ -1150,8 +1152,14 @@ def parse_citation(citation_text: str, default_type: str = "publication") -> Opt
             }
     
     # Strategy 2: Try DOI lookup via Crossref (if DOI found)
+    # Skip this strategy entirely for oral presentations and poster abstracts
+    citation_lower = citation_text.lower()
+    is_presentation = any(kw in citation_lower for kw in ['meeting', 'symposium', 'conference', 'workshop', 'retreat', 'annual']) or \
+                     'oral' in citation_lower or 'presentation' in citation_lower or \
+                     'poster' in citation_lower or 'abstract' in citation_lower
+    
     doi = extract_doi(citation_text)
-    if doi and HABANERO_AVAILABLE:
+    if doi and HABANERO_AVAILABLE and not is_presentation:
         metadata = lookup_doi_metadata(doi)
         if metadata and metadata.get('title'):
             entry_type = determine_entry_type(citation_text.lower())
@@ -1286,29 +1294,31 @@ def parse_citation(citation_text: str, default_type: str = "publication") -> Opt
         if 'status' not in parsed:
             parsed['status'] = None
         
+        # Skip DOI enrichment for oral presentations and poster abstracts
         # If fallback parser found a DOI (from doi field or URL), enrich with Crossref
-        doi = parsed.get('doi') or extract_doi(citation_text)
-        # Also check URLs for DOIs
-        if not doi and parsed.get('url'):
-            doi = extract_doi_from_url(parsed.get('url'))
-        
-        if doi and HABANERO_AVAILABLE:
-            crossref_metadata = lookup_doi_metadata(doi)
-            if crossref_metadata:
-                # Merge fallback + Crossref (prefer Crossref for enrichment)
-                parsed.update({
-                    'doi': doi,
-                    'abstract': crossref_metadata.get('abstract') or parsed.get('abstract'),
-                    'url': crossref_metadata.get('url') or parsed.get('url'),
-                    'keywords': crossref_metadata.get('keywords') or parsed.get('keywords'),
-                    'subject_area': crossref_metadata.get('subject_area') or parsed.get('subject_area'),
-                    'citation_count': crossref_metadata.get('citation_count') or parsed.get('citation_count'),
-                })
-                # If Crossref URL contains a DOI, extract it
-                if crossref_metadata.get('url'):
-                    url_doi = extract_doi_from_url(crossref_metadata.get('url'))
-                    if url_doi:
-                        parsed['doi'] = url_doi
+        if entry_type not in ['oral_presentation', 'poster_abstract']:
+            doi = parsed.get('doi') or extract_doi(citation_text)
+            # Also check URLs for DOIs
+            if not doi and parsed.get('url'):
+                doi = extract_doi_from_url(parsed.get('url'))
+            
+            if doi and HABANERO_AVAILABLE:
+                crossref_metadata = lookup_doi_metadata(doi)
+                if crossref_metadata:
+                    # Merge fallback + Crossref (prefer Crossref for enrichment)
+                    parsed.update({
+                        'doi': doi,
+                        'abstract': crossref_metadata.get('abstract') or parsed.get('abstract'),
+                        'url': crossref_metadata.get('url') or parsed.get('url'),
+                        'keywords': crossref_metadata.get('keywords') or parsed.get('keywords'),
+                        'subject_area': crossref_metadata.get('subject_area') or parsed.get('subject_area'),
+                        'citation_count': crossref_metadata.get('citation_count') or parsed.get('citation_count'),
+                    })
+                    # If Crossref URL contains a DOI, extract it
+                    if crossref_metadata.get('url'):
+                        url_doi = extract_doi_from_url(crossref_metadata.get('url'))
+                        if url_doi:
+                            parsed['doi'] = url_doi
         
         return parsed
     
