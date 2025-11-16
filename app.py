@@ -158,25 +158,28 @@ def enrich_entry_from_crossref(db, entry: Entry) -> Tuple[bool, str]:
             project_area=entry.project_area  # Don't change
         )
         
-        if db.update_entry(updated_entry):
-            updated_fields = []
-            if metadata.get('citation_count') is not None:
-                updated_fields.append(f"citation count: {metadata.get('citation_count')}")
-            if metadata.get('abstract') and not entry.abstract:
-                updated_fields.append("abstract")
-            if metadata.get('url') and not entry.url:
-                updated_fields.append("URL")
-            if metadata.get('keywords') and not entry.keywords:
-                updated_fields.append("keywords")
-            if metadata.get('subject_area') and not entry.subject_area:
-                updated_fields.append("subject area")
-            
-            msg = f"✅ Enriched entry with Crossref data"
-            if updated_fields:
-                msg += f" (updated: {', '.join(updated_fields)})"
-            return True, msg
-        else:
-            return False, "Failed to update entry in database"
+        try:
+            if db.update_entry(updated_entry):
+                updated_fields = []
+                if metadata.get('citation_count') is not None:
+                    updated_fields.append(f"citation count: {metadata.get('citation_count')}")
+                if metadata.get('abstract') and not entry.abstract:
+                    updated_fields.append("abstract")
+                if metadata.get('url') and not entry.url:
+                    updated_fields.append("URL")
+                if metadata.get('keywords') and not entry.keywords:
+                    updated_fields.append("keywords")
+                if metadata.get('subject_area') and not entry.subject_area:
+                    updated_fields.append("subject area")
+                
+                msg = f"✅ Enriched entry with Crossref data"
+                if updated_fields:
+                    msg += f" (updated: {', '.join(updated_fields)})"
+                return True, msg
+            else:
+                return False, "Failed to update entry in database"
+        except (ValueError, Exception) as e:
+            return False, f"Error updating entry: {str(e)}"
             
     except Exception as e:
         return False, f"Error enriching entry: {str(e)}"
@@ -359,7 +362,10 @@ def show_add_citations_page(db):
                                 if anum_position:
                                     entry.id = entry_id
                                     entry.anum_position = anum_position
-                                    db.update_entry(entry)
+                                    try:
+                                        db.update_entry(entry)
+                                    except Exception as e:
+                                        st.warning(f"⚠️ Entry created but failed to update Anum's position: {str(e)}")
                                 
                                 st.success(f"✅ Entry added successfully! (ID: {entry_id})")
                                 st.balloons()
@@ -753,7 +759,11 @@ def show_add_citations_page(db):
                                     if anum_position:
                                         entry.id = entry_id
                                         entry.anum_position = anum_position
-                                        db.update_entry(entry)
+                                        try:
+                                            db.update_entry(entry)
+                                        except Exception as e:
+                                            # Log error but continue processing
+                                            error_messages.append(f"Entry {i} - Failed to update Anum's position: {str(e)}")
                                     
                                     added_count += 1
                                 else:
@@ -905,11 +915,16 @@ def show_search_page(db):
                     selected_project_area = PROJECT_AREAS[selected_project_area_display]
                     # Update entry in database
                     entry.project_area = selected_project_area
-                    if db.update_entry(entry):
-                        st.session_state[last_processed_key] = selected_project_area_display
-                        st.rerun()
-                    else:
-                        st.error("❌ Failed")
+                    try:
+                        if db.update_entry(entry):
+                            st.session_state[last_processed_key] = selected_project_area_display
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to update entry: Entry not found")
+                    except ValueError as e:
+                        st.error(f"❌ Validation error: {str(e)}")
+                    except Exception as e:
+                        st.error(f"❌ Error updating entry: {str(e)}")
                 elif selected_project_area_display != st.session_state[last_processed_key]:
                     # Selection changed but matches DB - update session state
                     st.session_state[last_processed_key] = selected_project_area_display
@@ -1083,52 +1098,60 @@ def show_search_page(db):
                                         )
                                         
                                         # Update the entry first
-                                        if not db.update_entry(updated_entry):
-                                            st.error("❌ Failed to update entry in database.")
-                                        else:
-                                            # Update authors - delete old relationships and add new ones
-                                            current_authors = db.get_entry_authors(entry.id)
-                                            for curr_author in current_authors:
-                                                # Delete the relationship (authors themselves are kept for other entries)
-                                                db.conn.execute(
-                                                    "DELETE FROM entry_authors WHERE entry_id = ? AND author_id = ?",
-                                                    (entry.id, curr_author['id'])
-                                                )
-                                            
-                                            # Add updated authors
-                                            from models import Author, EntryAuthor
-                                            from citation_parser import is_anum_author, normalize_author_name
-                                            
-                                            anum_position = None
-                                            for pos, author_name in enumerate(edited_authors, 1):
-                                                if not author_name or len(author_name.strip()) < 3:
-                                                    continue
+                                        try:
+                                            if not db.update_entry(updated_entry):
+                                                st.error("❌ Failed to update entry in database: Entry not found")
+                                            else:
+                                                # Update authors - delete old relationships and add new ones
+                                                current_authors = db.get_entry_authors(entry.id)
+                                                for curr_author in current_authors:
+                                                    # Delete the relationship (authors themselves are kept for other entries)
+                                                    db.conn.execute(
+                                                        "DELETE FROM entry_authors WHERE entry_id = ? AND author_id = ?",
+                                                        (entry.id, curr_author['id'])
+                                                    )
                                                 
-                                                is_anum = is_anum_author(author_name)
-                                                if is_anum and anum_position is None:
-                                                    anum_position = pos
+                                                # Add updated authors
+                                                from models import Author, EntryAuthor
+                                                from citation_parser import is_anum_author, normalize_author_name
                                                 
-                                                author = Author(name=normalize_author_name(author_name), is_anum=is_anum)
-                                                author_id = db.create_author(author)
+                                                anum_position = None
+                                                for pos, author_name in enumerate(edited_authors, 1):
+                                                    if not author_name or len(author_name.strip()) < 3:
+                                                        continue
+                                                    
+                                                    is_anum = is_anum_author(author_name)
+                                                    if is_anum and anum_position is None:
+                                                        anum_position = pos
+                                                    
+                                                    author = Author(name=normalize_author_name(author_name), is_anum=is_anum)
+                                                    author_id = db.create_author(author)
+                                                    
+                                                    db.add_entry_author(EntryAuthor(
+                                                        entry_id=entry.id,
+                                                        author_id=author_id,
+                                                        position=pos,
+                                                        is_first_author=False
+                                                    ))
                                                 
-                                                db.add_entry_author(EntryAuthor(
-                                                    entry_id=entry.id,
-                                                    author_id=author_id,
-                                                    position=pos,
-                                                    is_first_author=False
-                                                ))
-                                            
-                                            # Update Anum's position if changed
-                                            if anum_position != entry.anum_position:
-                                                updated_entry.anum_position = anum_position
-                                                db.update_entry(updated_entry)
-                                            
-                                            # Commit all changes
-                                            db.conn.commit()
-                                            
-                                            st.success("✅ Entry updated successfully!")
-                                            st.session_state[edit_key] = False
-                                            st.rerun()
+                                                # Update Anum's position if changed
+                                                if anum_position != entry.anum_position:
+                                                    updated_entry.anum_position = anum_position
+                                                    try:
+                                                        db.update_entry(updated_entry)
+                                                    except Exception as e:
+                                                        st.warning(f"⚠️ Entry updated but failed to update Anum's position: {str(e)}")
+                                                
+                                                # Commit all changes
+                                                db.conn.commit()
+                                                
+                                                st.success("✅ Entry updated successfully!")
+                                                st.session_state[edit_key] = False
+                                                st.rerun()
+                                        except ValueError as e:
+                                            st.error(f"❌ Validation error: {str(e)}")
+                                        except Exception as e:
+                                            st.error(f"❌ Error updating entry: {str(e)}")
                                             
                                     except Exception as e:
                                         st.error(f"❌ Error updating entry: {str(e)}")

@@ -23,6 +23,8 @@ class Database:
         """Establish database connection."""
         self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
         self.conn.row_factory = sqlite3.Row  # Enable column access by name
+        # Run migrations to ensure schema is up to date
+        self.migrate()
     
     def _ensure_connected(self):
         """Ensure database connection is active."""
@@ -63,6 +65,71 @@ class Database:
             schema_sql = f.read()
         
         self.conn.executescript(schema_sql)
+        self.conn.commit()
+    
+    def migrate(self):
+        """Migrate database schema by adding missing columns if they don't exist.
+        This allows the database to be updated without recreating it.
+        """
+        if not self.conn:
+            return
+        
+        try:
+            # Check which columns exist in entries table
+            cursor = self.conn.execute("PRAGMA table_info(entries)")
+            existing_columns = [row[1] for row in cursor.fetchall()]
+        except sqlite3.OperationalError:
+            # Table doesn't exist yet, skip migration (will be created by initialize)
+            return
+        
+        # Define columns that should exist (from schema.sql)
+        required_columns = {
+            'abstract': 'TEXT',
+            'url': 'TEXT',
+            'keywords': 'TEXT',
+            'subject_area': 'TEXT',
+            'citation_count': 'INTEGER',
+            'anum_position': 'INTEGER',
+            'project_area': 'TEXT',
+            'created_at': 'TIMESTAMP',
+            'updated_at': 'TIMESTAMP'
+        }
+        
+        # Add missing columns
+        columns_added = []
+        for column, col_type in required_columns.items():
+            if column not in existing_columns:
+                try:
+                    self.conn.execute(f"ALTER TABLE entries ADD COLUMN {column} {col_type}")
+                    columns_added.append(column)
+                except sqlite3.OperationalError:
+                    # Column might have been added by another process, ignore
+                    pass
+        
+        # Update existing_columns list if we added any
+        if columns_added:
+            self.conn.commit()
+            # Refresh column list to include newly added columns
+            try:
+                cursor = self.conn.execute("PRAGMA table_info(entries)")
+                existing_columns = [row[1] for row in cursor.fetchall()]
+            except sqlite3.OperationalError:
+                pass
+        
+        # Create indexes if they don't exist (only for columns that exist)
+        indexes = [
+            ("idx_entries_project_area", "entries", "project_area"),
+            ("idx_entries_anum_position", "entries", "anum_position"),
+        ]
+        
+        for index_name, table, column in indexes:
+            if column in existing_columns:
+                try:
+                    self.conn.execute(f"CREATE INDEX IF NOT EXISTS {index_name} ON {table}({column})")
+                except sqlite3.OperationalError:
+                    # Index might already exist, ignore
+                    pass
+        
         self.conn.commit()
     
     # Entry operations
@@ -147,6 +214,10 @@ class Database:
         entry.created_at = now
         entry.updated_at = now
         
+        # Convert datetime objects to ISO format strings for SQLite
+        created_at_str = entry.created_at.isoformat() if isinstance(entry.created_at, datetime) else entry.created_at
+        updated_at_str = entry.updated_at.isoformat() if isinstance(entry.updated_at, datetime) else entry.updated_at
+        
         cursor = self.conn.execute("""
             INSERT INTO entries (type, title, year, venue, volume, issue, pages, 
                                doi, abstract_number, date, location, status,
@@ -158,7 +229,7 @@ class Database:
             entry.issue, entry.pages, entry.doi, entry.abstract_number,
             entry.date, entry.location, entry.status,
             entry.abstract, entry.url, entry.keywords, entry.subject_area, entry.citation_count,
-            entry.anum_position, entry.project_area, entry.created_at, entry.updated_at
+            entry.anum_position, entry.project_area, created_at_str, updated_at_str
         ))
         
         self.conn.commit()
@@ -239,33 +310,58 @@ class Database:
             
         Returns:
             True if updated, False if entry not found
+            
+        Raises:
+            ValueError: If required fields are missing or invalid
+            sqlite3.Error: If database operation fails
         """
         if not self.conn:
             self.connect()
         
         if entry.id is None:
-            return False
+            raise ValueError("Entry ID is required for update")
+        
+        # Validate required fields (schema requires NOT NULL)
+        if not entry.type or not entry.type.strip():
+            raise ValueError("Entry type is required and cannot be empty")
+        
+        if not entry.title or not entry.title.strip():
+            raise ValueError("Entry title is required and cannot be empty")
         
         entry.updated_at = datetime.now()
         
-        cursor = self.conn.execute("""
-            UPDATE entries 
-            SET type = ?, title = ?, year = ?, venue = ?, volume = ?, 
-                issue = ?, pages = ?, doi = ?, abstract_number = ?, 
-                date = ?, location = ?, status = ?,
-                abstract = ?, url = ?, keywords = ?, subject_area = ?, citation_count = ?,
-                anum_position = ?, project_area = ?, updated_at = ?
-            WHERE id = ?
-        """, (
-            entry.type, entry.title, entry.year, entry.venue, entry.volume,
-            entry.issue, entry.pages, entry.doi, entry.abstract_number,
-            entry.date, entry.location, entry.status,
-            entry.abstract, entry.url, entry.keywords, entry.subject_area, entry.citation_count,
-            entry.anum_position, entry.project_area, entry.updated_at, entry.id
-        ))
+        # Convert datetime to ISO format string for SQLite (SQLite stores TIMESTAMP as TEXT)
+        # Handle both datetime objects and strings (in case entry.updated_at was already a string from DB)
+        if isinstance(entry.updated_at, datetime):
+            updated_at_str = entry.updated_at.isoformat()
+        else:
+            updated_at_str = entry.updated_at
         
-        self.conn.commit()
-        return cursor.rowcount > 0
+        try:
+            cursor = self.conn.execute("""
+                UPDATE entries 
+                SET type = ?, title = ?, year = ?, venue = ?, volume = ?, 
+                    issue = ?, pages = ?, doi = ?, abstract_number = ?, 
+                    date = ?, location = ?, status = ?,
+                    abstract = ?, url = ?, keywords = ?, subject_area = ?, citation_count = ?,
+                    anum_position = ?, project_area = ?, updated_at = ?
+                WHERE id = ?
+            """, (
+                entry.type, entry.title, entry.year, entry.venue, entry.volume,
+                entry.issue, entry.pages, entry.doi, entry.abstract_number,
+                entry.date, entry.location, entry.status,
+                entry.abstract, entry.url, entry.keywords, entry.subject_area, entry.citation_count,
+                entry.anum_position, entry.project_area, updated_at_str, entry.id
+            ))
+            
+            self.conn.commit()
+            return cursor.rowcount > 0
+        except sqlite3.Error as e:
+            # Re-raise SQLite errors with context
+            raise sqlite3.Error(f"Database error updating entry {entry.id}: {str(e)}") from e
+        except Exception as e:
+            # Re-raise other exceptions with context
+            raise Exception(f"Unexpected error updating entry {entry.id}: {str(e)}") from e
     
     def delete_entry(self, entry_id: int) -> bool:
         """Delete an entry (cascades to entry_authors).
