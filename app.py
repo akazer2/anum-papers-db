@@ -118,6 +118,10 @@ def enrich_entry_from_crossref(db, entry: Entry) -> Tuple[bool, str]:
     Returns:
         Tuple of (success: bool, message: str)
     """
+    # Skip enrichment for oral presentations and poster abstracts
+    if entry.type in ['oral_presentation', 'poster_abstract']:
+        return False, "Enrichment is disabled for oral presentations and poster abstracts"
+    
     if not entry.doi:
         return False, "Entry does not have a DOI"
     
@@ -1182,8 +1186,8 @@ def show_search_page(db):
                             if st.button("🗑️ Delete", key=f"delete_btn_{entry.id}", type="secondary"):
                                 st.session_state[delete_key] = True
                                 st.rerun()
-                        # Only show enrich button if entry has a DOI
-                        if entry.doi:
+                        # Only show enrich button if entry has a DOI and is not a presentation
+                        if entry.doi and entry.type not in ['oral_presentation', 'poster_abstract']:
                             with col_actions4:
                                 if st.button("🔄 Enrich", key=f"enrich_btn_{entry.id}", 
                                            help="Fetch latest metadata from Crossref (refreshes citation count, abstract, etc.)"):
@@ -1273,14 +1277,14 @@ def show_search_page(db):
             if not HABANERO_AVAILABLE:
                 st.error("Crossref API (habanero) is not available")
             else:
-                # Get all entries with DOI
+                # Get all entries with DOI, excluding oral presentations and poster abstracts
                 all_entries = db.get_all_entries()
-                entries_with_doi = [e for e in all_entries if e.doi]
+                entries_with_doi = [e for e in all_entries if e.doi and e.type not in ['oral_presentation', 'poster_abstract']]
                 
                 if not entries_with_doi:
-                    st.info("No entries with DOI found.")
+                    st.info("No entries with DOI found (oral presentations and poster abstracts are excluded).")
                 else:
-                    st.info(f"Found {len(entries_with_doi)} entries with DOI. This may take a while...")
+                    st.info(f"Found {len(entries_with_doi)} entries with DOI (oral presentations and poster abstracts excluded). This may take a while...")
                     
                     progress_bar = st.progress(0)
                     status_text = st.empty()
