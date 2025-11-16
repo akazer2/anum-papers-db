@@ -3,6 +3,7 @@
 import os
 import sqlite3
 from typing import Tuple
+from datetime import datetime
 import streamlit as st
 from db import Database
 from models import Entry, Author
@@ -1234,6 +1235,35 @@ def show_search_page(db):
         # Database management
         st.markdown("---")
         st.header("Database Management")
+        
+        # Export to JSON button
+        if st.button("📥 Export for Website", 
+                    help="Export all database content as JSON for use in website project"):
+            import json
+            try:
+                export_data = db.export_to_json()
+                json_str = json.dumps(export_data, indent=2, ensure_ascii=False)
+                
+                # Create download button
+                st.download_button(
+                    label="💾 Download JSON",
+                    data=json_str,
+                    file_name=f"anum_papers_export_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                    mime="application/json",
+                    type="primary"
+                )
+                
+                # Show preview
+                with st.expander("📋 Preview Export", expanded=False):
+                    st.json(export_data)
+                    st.caption(f"Total entries: {export_data['metadata']['total_entries']}")
+            except Exception as e:
+                st.error(f"Error exporting data: {str(e)}")
+                import traceback
+                with st.expander("Error Details"):
+                    st.code(traceback.format_exc())
+        
+        st.markdown("---")
         
         # Bulk enrich from Crossref
         if st.button("🔄 Enrich All Entries with DOI", 

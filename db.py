@@ -544,4 +544,74 @@ class Database:
         """, (author_id,)).fetchall()
         
         return [Entry.from_dict(dict(row)) for row in rows]
+    
+    def export_to_json(self) -> Dict[str, Any]:
+        """Export all database content to a rich JSON structure.
+        
+        Returns:
+            Dictionary containing all entries with their authors and metadata
+        """
+        if not self.conn:
+            self.connect()
+        
+        # Get all entries
+        entries = self.get_all_entries()
+        
+        # Build the export structure
+        export_data = {
+            "metadata": {
+                "export_date": datetime.now().isoformat(),
+                "total_entries": len(entries),
+                "version": "1.0"
+            },
+            "entries": []
+        }
+        
+        # Process each entry
+        for entry in entries:
+            # Get authors for this entry
+            authors_data = self.get_entry_authors(entry.id)
+            
+            # Convert entry to dict, handling datetime objects
+            entry_dict = entry.to_dict()
+            
+            # Convert datetime objects to ISO format strings (handle both datetime objects and strings)
+            if entry_dict.get('created_at'):
+                if isinstance(entry_dict['created_at'], datetime):
+                    entry_dict['created_at'] = entry_dict['created_at'].isoformat()
+                # If it's already a string, keep it as is
+            if entry_dict.get('updated_at'):
+                if isinstance(entry_dict['updated_at'], datetime):
+                    entry_dict['updated_at'] = entry_dict['updated_at'].isoformat()
+                # If it's already a string, keep it as is
+            
+            # Format authors for export
+            authors_list = []
+            for author_data in authors_data:
+                authors_list.append({
+                    "id": author_data['id'],
+                    "name": author_data['name'],
+                    "position": author_data['position'],
+                    "is_anum": bool(author_data['is_anum']),
+                    "is_first_author": bool(author_data['is_first_author']),
+                    "is_corresponding": bool(author_data['is_corresponding'])
+                })
+            
+            # Add authors to entry dict
+            entry_dict['authors'] = authors_list
+            
+            # Add project area display name
+            project_area_display = {
+                None: "None",
+                "tme_evolution": "TME Evolution",
+                "pet_mri": "PET/MRI",
+                "ex_vivo_biology": "Ex Vivo Biology",
+                "response_modeling": "Forecasting",
+                "breast_mri_screening": "Breast MRI"
+            }.get(entry.project_area, "None")
+            entry_dict['project_area_display'] = project_area_display
+            
+            export_data["entries"].append(entry_dict)
+        
+        return export_data
 
