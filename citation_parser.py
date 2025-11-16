@@ -1095,43 +1095,45 @@ def parse_citation(citation_text: str, default_type: str = "publication") -> Opt
                             if url_doi:
                                 metadata['doi'] = url_doi
                 
+                # Skip OpenAlex enrichment for oral presentations and poster abstracts
                 # Also try OpenAlex enrichment if no DOI or if we want additional metadata
-                if OPENALEX_AVAILABLE and metadata.get('title'):
-                    openalex_metadata = lookup_openalex(
-                        citation_text,
-                        title=metadata.get('title'),
-                        authors=metadata.get('authors'),
-                        year=metadata.get('year')
-                    )
-                    if openalex_metadata:
-                        # Extract DOI from OpenAlex (from doi field or URL)
-                        openalex_doi = openalex_metadata.get('doi')
-                        if not openalex_doi and openalex_metadata.get('url'):
-                            openalex_doi = extract_doi_from_url(openalex_metadata.get('url'))
-                        
-                        # If OpenAlex found a DOI we didn't have, use it for Crossref enrichment
-                        if not doi and openalex_doi and HABANERO_AVAILABLE:
-                            metadata['doi'] = openalex_doi
-                            crossref_metadata = lookup_doi_metadata(openalex_doi)
-                            if crossref_metadata:
-                                # Merge Crossref data from OpenAlex-found DOI
-                                metadata.update({
-                                    'abstract': crossref_metadata.get('abstract') or metadata.get('abstract'),
-                                    'url': crossref_metadata.get('url') or metadata.get('url'),
-                                    'keywords': crossref_metadata.get('keywords') or metadata.get('keywords'),
-                                    'subject_area': crossref_metadata.get('subject_area') or metadata.get('subject_area'),
-                                    'citation_count': crossref_metadata.get('citation_count') or metadata.get('citation_count'),
-                                })
-                        
-                        # Merge OpenAlex data (only fill in missing fields)
-                        if not metadata.get('abstract') and openalex_metadata.get('abstract'):
-                            metadata['abstract'] = openalex_metadata.get('abstract')
-                        if not metadata.get('url') and openalex_metadata.get('url'):
-                            metadata['url'] = openalex_metadata.get('url')
-                        if not metadata.get('keywords') and openalex_metadata.get('keywords'):
-                            metadata['keywords'] = openalex_metadata.get('keywords')
-                        if not metadata.get('citation_count') and openalex_metadata.get('citation_count'):
-                            metadata['citation_count'] = openalex_metadata.get('citation_count')
+                if entry_type not in ['oral_presentation', 'poster_abstract']:
+                    if OPENALEX_AVAILABLE and metadata.get('title'):
+                        openalex_metadata = lookup_openalex(
+                            citation_text,
+                            title=metadata.get('title'),
+                            authors=metadata.get('authors'),
+                            year=metadata.get('year')
+                        )
+                        if openalex_metadata:
+                            # Extract DOI from OpenAlex (from doi field or URL)
+                            openalex_doi = openalex_metadata.get('doi')
+                            if not openalex_doi and openalex_metadata.get('url'):
+                                openalex_doi = extract_doi_from_url(openalex_metadata.get('url'))
+                            
+                            # If OpenAlex found a DOI we didn't have, use it for Crossref enrichment
+                            if not doi and openalex_doi and HABANERO_AVAILABLE:
+                                metadata['doi'] = openalex_doi
+                                crossref_metadata = lookup_doi_metadata(openalex_doi)
+                                if crossref_metadata:
+                                    # Merge Crossref data from OpenAlex-found DOI
+                                    metadata.update({
+                                        'abstract': crossref_metadata.get('abstract') or metadata.get('abstract'),
+                                        'url': crossref_metadata.get('url') or metadata.get('url'),
+                                        'keywords': crossref_metadata.get('keywords') or metadata.get('keywords'),
+                                        'subject_area': crossref_metadata.get('subject_area') or metadata.get('subject_area'),
+                                        'citation_count': crossref_metadata.get('citation_count') or metadata.get('citation_count'),
+                                    })
+                            
+                            # Merge OpenAlex data (only fill in missing fields)
+                            if not metadata.get('abstract') and openalex_metadata.get('abstract'):
+                                metadata['abstract'] = openalex_metadata.get('abstract')
+                            if not metadata.get('url') and openalex_metadata.get('url'):
+                                metadata['url'] = openalex_metadata.get('url')
+                            if not metadata.get('keywords') and openalex_metadata.get('keywords'):
+                                metadata['keywords'] = openalex_metadata.get('keywords')
+                            if not metadata.get('citation_count') and openalex_metadata.get('citation_count'):
+                                metadata['citation_count'] = openalex_metadata.get('citation_count')
             
             return {
                 'type': entry_type,
@@ -1198,64 +1200,74 @@ def parse_citation(citation_text: str, default_type: str = "publication") -> Opt
             }
     
     # Strategy 3: Try OpenAlex search (if no DOI)
-    if OPENALEX_AVAILABLE:
+    # Skip this strategy entirely for oral presentations and poster abstracts
+    citation_lower = citation_text.lower()
+    is_presentation_strategy3 = any(kw in citation_lower for kw in ['meeting', 'symposium', 'conference', 'workshop', 'retreat', 'annual']) or \
+                               'oral' in citation_lower or 'presentation' in citation_lower or \
+                               'poster' in citation_lower or 'abstract' in citation_lower
+    
+    if OPENALEX_AVAILABLE and not is_presentation_strategy3:
         # First try fallback parser to get basic info
         fallback_parsed = parse_citation_fallback(citation_text)
         if fallback_parsed and fallback_parsed.get('title'):
-            # Enrich with OpenAlex
-            openalex_metadata = lookup_openalex(
-                citation_text,
-                title=fallback_parsed.get('title'),
-                authors=fallback_parsed.get('authors'),
-                year=fallback_parsed.get('year')
-            )
+            # Determine entry type before enrichment
+            entry_type = determine_entry_type(citation_text.lower())
             
-            if openalex_metadata:
-                # Merge fallback + OpenAlex (prefer citation-parsed authors over OpenAlex)
-                # Citation text format (e.g., "Syed, A. K.") is preferred over OpenAlex format (e.g., "Syed, Adil")
-                entry_type = determine_entry_type(citation_text.lower())
-                # Prefer fallback (citation-parsed) authors over OpenAlex authors
-                authors = fallback_parsed.get('authors', []) or openalex_metadata.get('authors', [])
-                first_author_indices = extract_first_author_positions(
-                    authors, citation_text, openalex_metadata.get('title', fallback_parsed['title'])
+            # Skip OpenAlex enrichment for oral presentations and poster abstracts
+            if entry_type not in ['oral_presentation', 'poster_abstract']:
+                # Enrich with OpenAlex
+                openalex_metadata = lookup_openalex(
+                    citation_text,
+                    title=fallback_parsed.get('title'),
+                    authors=fallback_parsed.get('authors'),
+                    year=fallback_parsed.get('year')
                 )
                 
-                # Get DOI from OpenAlex (doi field or URL), fallback parser, or extract from text
-                doi = openalex_metadata.get('doi') or fallback_parsed.get('doi') or extract_doi(citation_text)
-                # Also check URLs for DOIs
-                if not doi and openalex_metadata.get('url'):
-                    doi = extract_doi_from_url(openalex_metadata.get('url'))
-                if not doi and fallback_parsed.get('url'):
-                    doi = extract_doi_from_url(fallback_parsed.get('url'))
-                
-                # If we found a DOI, enrich with Crossref
-                crossref_metadata = None
-                if doi and HABANERO_AVAILABLE:
-                    crossref_metadata = lookup_doi_metadata(doi)
-                    # If Crossref URL contains a DOI, use it
-                    if crossref_metadata and crossref_metadata.get('url'):
-                        url_doi = extract_doi_from_url(crossref_metadata.get('url'))
-                        if url_doi and url_doi != doi:
-                            doi = url_doi  # Use the DOI from URL if different
-                
-                # Merge data: prefer Crossref if available, otherwise OpenAlex
-                return {
-                    'type': entry_type,
-                    'title': openalex_metadata.get('title', fallback_parsed['title']),
-                    'year': openalex_metadata.get('year') or fallback_parsed.get('year'),
-                    'venue': openalex_metadata.get('venue') or fallback_parsed.get('venue'),
-                    'volume': fallback_parsed.get('volume'),
-                    'issue': fallback_parsed.get('issue'),
-                    'pages': openalex_metadata.get('pages') or fallback_parsed.get('pages'),
-                    'doi': doi,
-                    'abstract': (crossref_metadata.get('abstract') if crossref_metadata else None) or openalex_metadata.get('abstract'),
-                    'url': (crossref_metadata.get('url') if crossref_metadata else None) or openalex_metadata.get('url'),
-                    'keywords': (crossref_metadata.get('keywords') if crossref_metadata else None) or openalex_metadata.get('keywords'),
-                    'subject_area': crossref_metadata.get('subject_area') if crossref_metadata else None,
-                    'citation_count': (crossref_metadata.get('citation_count') if crossref_metadata else None) or openalex_metadata.get('citation_count'),
-                    'authors': authors,
-                    'first_author_positions': first_author_indices
-                }
+                if openalex_metadata:
+                    # Merge fallback + OpenAlex (prefer citation-parsed authors over OpenAlex)
+                    # Citation text format (e.g., "Syed, A. K.") is preferred over OpenAlex format (e.g., "Syed, Adil")
+                    # Prefer fallback (citation-parsed) authors over OpenAlex authors
+                    authors = fallback_parsed.get('authors', []) or openalex_metadata.get('authors', [])
+                    first_author_indices = extract_first_author_positions(
+                        authors, citation_text, openalex_metadata.get('title', fallback_parsed['title'])
+                    )
+                    
+                    # Get DOI from OpenAlex (doi field or URL), fallback parser, or extract from text
+                    doi = openalex_metadata.get('doi') or fallback_parsed.get('doi') or extract_doi(citation_text)
+                    # Also check URLs for DOIs
+                    if not doi and openalex_metadata.get('url'):
+                        doi = extract_doi_from_url(openalex_metadata.get('url'))
+                    if not doi and fallback_parsed.get('url'):
+                        doi = extract_doi_from_url(fallback_parsed.get('url'))
+                    
+                    # If we found a DOI, enrich with Crossref
+                    crossref_metadata = None
+                    if doi and HABANERO_AVAILABLE:
+                        crossref_metadata = lookup_doi_metadata(doi)
+                        # If Crossref URL contains a DOI, use it
+                        if crossref_metadata and crossref_metadata.get('url'):
+                            url_doi = extract_doi_from_url(crossref_metadata.get('url'))
+                            if url_doi and url_doi != doi:
+                                doi = url_doi  # Use the DOI from URL if different
+                    
+                    # Merge data: prefer Crossref if available, otherwise OpenAlex
+                    return {
+                        'type': entry_type,
+                        'title': openalex_metadata.get('title', fallback_parsed['title']),
+                        'year': openalex_metadata.get('year') or fallback_parsed.get('year'),
+                        'venue': openalex_metadata.get('venue') or fallback_parsed.get('venue'),
+                        'volume': fallback_parsed.get('volume'),
+                        'issue': fallback_parsed.get('issue'),
+                        'pages': openalex_metadata.get('pages') or fallback_parsed.get('pages'),
+                        'doi': doi,
+                        'abstract': (crossref_metadata.get('abstract') if crossref_metadata else None) or openalex_metadata.get('abstract'),
+                        'url': (crossref_metadata.get('url') if crossref_metadata else None) or openalex_metadata.get('url'),
+                        'keywords': (crossref_metadata.get('keywords') if crossref_metadata else None) or openalex_metadata.get('keywords'),
+                        'subject_area': crossref_metadata.get('subject_area') if crossref_metadata else None,
+                        'citation_count': (crossref_metadata.get('citation_count') if crossref_metadata else None) or openalex_metadata.get('citation_count'),
+                        'authors': authors,
+                        'first_author_positions': first_author_indices
+                    }
     
     # Strategy 4: Fallback to regex parsing
     parsed = parse_citation_fallback(citation_text)
